@@ -29,6 +29,9 @@
     <ClInclude Include="Shaders\LoadShaders.h">
       <Filter>소스 파일</Filter>
     </ClInclude>
+    <ClInclude Include="Define.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\Phong_Tx.frag">
@@ -41,6 +44,24 @@
       <Filter>리소스 파일</Filter>
     </None>
     <None Include="Shaders\simple.vert">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="Shaders\mrt.vert">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="Shaders\mrt.frag">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="Shaders\deferred.vert">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="Shaders\deferred.frag">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="Shaders\mrt_simple.frag">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="Shaders\mrt_simple.vert">
       <Filter>리소스 파일</Filter>
     </None>
   </ItemGroup>
