@@ -58,11 +58,5 @@
     <None Include="Shaders\deferred.frag">
       <Filter>리소스 파일</Filter>
     </None>
-    <None Include="Shaders\mrt_simple.frag">
-      <Filter>리소스 파일</Filter>
-    </None>
-    <None Include="Shaders\mrt_simple.vert">
-      <Filter>리소스 파일</Filter>
-    </None>
   </ItemGroup>
 </Project>

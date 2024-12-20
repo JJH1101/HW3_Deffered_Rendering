@@ -1,8 +1,9 @@
 #define _CRT_SECURE_NO_WARNINGS
 
+#include "Define.h"
+
 #include <stdio.h>
 #include <stdlib.h>
-#include <GL/glew.h>
 #include <GL/freeglut.h>
 #include <FreeImage/FreeImage.h>
 
@@ -410,16 +411,9 @@ void draw_tiger(void) {
 // callbacks
 float PRP_distance_scale[6] = { 0.5f, 1.0f, 2.5f, 5.0f, 10.0f, 20.0f };
 
-void display(void) {
+// Junhyeok modified
+void draw_scene(void) {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	glUseProgram(h_ShaderProgram_simple);
-	ModelViewMatrix = glm::scale(ViewMatrix, glm::vec3(50.0f, 50.0f, 50.0f));
-	ModelViewProjectionMatrix = ProjectionMatrix * ModelViewMatrix;
-	glUniformMatrix4fv(loc_ModelViewProjectionMatrix_simple, 1, GL_FALSE, &ModelViewProjectionMatrix[0][0]);
-	glLineWidth(2.0f);
-	draw_axes();
-	glLineWidth(1.0f);
 
 	glUseProgram(h_ShaderProgram_TXPS);
   	set_material_floor();
@@ -817,14 +811,8 @@ void display(void) {
 	draw_tiger(); // 16
 
 	//////////////////////////////////////////////////////////////////////////////////////////////
-	glUseProgram(h_ShaderProgram_simple);
-	ModelViewProjectionMatrix = glm::scale(ModelViewProjectionMatrix, glm::vec3(20.0f, 20.0f, 20.0f));
-	glUniformMatrix4fv(loc_ModelViewProjectionMatrix_simple, 1, GL_FALSE, &ModelViewProjectionMatrix[0][0]);
-	draw_axes();
 
 	glUseProgram(0);
-
-	glutSwapBuffers();
 }
 
 void timer_scene(int value) {
@@ -1006,6 +994,9 @@ void keyboard(unsigned char key, int x, int y) {
 void reshape(int width, int height) {
 	float aspect_ratio;
 
+	window_width = width;
+	window_height = height;
+
 	glViewport(0, 0, width, height);
 	
 	aspect_ratio = (float) width / height;
@@ -1038,20 +1029,12 @@ void register_callbacks(void) {
 void prepare_shader_program(void) {
 	int i;
 	char string[256];
-	ShaderInfo shader_info_simple[3] = {
-		{ GL_VERTEX_SHADER, "Shaders/simple.vert" },
-		{ GL_FRAGMENT_SHADER, "Shaders/simple.frag" },
-		{ GL_NONE, NULL }
-	};
+
 	ShaderInfo shader_info_TXPS[3] = {
 		{ GL_VERTEX_SHADER, "Shaders/Phong_Tx.vert" },
 		{ GL_FRAGMENT_SHADER, "Shaders/Phong_Tx.frag" },
 		{ GL_NONE, NULL }
 	};
-
-	h_ShaderProgram_simple = LoadShaders(shader_info_simple);
-	loc_primitive_color = glGetUniformLocation(h_ShaderProgram_simple, "u_primitive_color");
-	loc_ModelViewProjectionMatrix_simple = glGetUniformLocation(h_ShaderProgram_simple, "u_ModelViewProjectionMatrix");
 
 	h_ShaderProgram_TXPS = LoadShaders(shader_info_TXPS);
 	loc_ModelViewProjectionMatrix_TXPS = glGetUniformLocation(h_ShaderProgram_TXPS, "u_ModelViewProjectionMatrix");
@@ -1219,7 +1202,12 @@ void prepare_scene(void) {
 
 void initialize_renderer(void) {
 	register_callbacks();
+#if MODE == FORWARD
 	prepare_shader_program();
+#else
+	create_G_buffer();
+	prepare_shader_deferred();
+#endif
 	initialize_OpenGL();
 	prepare_scene();
 }
@@ -1254,6 +1242,133 @@ void greetings(char *program_name, char messages[][256], int n_message_lines) {
 	initialize_glew();
 }
 
+void create_G_buffer() {
+	glGenFramebuffers(1, &g_buffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, g_buffer);
+
+	// position
+	glGenTextures(1, &g_position);
+	glBindTexture(GL_TEXTURE_2D, g_position);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window_width, window_height, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_position, 0);
+
+	// normal
+	glGenTextures(1, &g_normal);
+	glBindTexture(GL_TEXTURE_2D, g_normal);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window_width, window_height, 0, GL_RGBA, GL_FLOAT, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, g_normal, 0);
+
+	// albedo & specular
+	glGenTextures(1, &g_albedo_spec);
+	glBindTexture(GL_TEXTURE_2D, g_albedo_spec);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, window_width, window_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, g_albedo_spec, 0);
+
+	// Color attachments
+	unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+	glDrawBuffers(3, attachments);
+	
+	// depth
+	unsigned int rboDepth;
+	glGenRenderbuffers(1, &rboDepth);
+	glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
+	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, window_width, window_height);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void prepare_shader_deferred() {
+	int i;
+	char string[256];
+	ShaderInfo shader_info_mrt[3] = {
+		{ GL_VERTEX_SHADER, "Shaders/mrt.vert" },
+		{ GL_FRAGMENT_SHADER, "Shaders/mrt.frag" },
+		{ GL_NONE, NULL }
+	};
+	ShaderInfo shader_info_deferred[3] = {
+		{ GL_VERTEX_SHADER, "Shaders/deferred.vert" },
+		{ GL_FRAGMENT_SHADER, "Shaders/deferred.frag" },
+		{ GL_NONE, NULL }
+	};
+
+	h_ShaderProgram_TXPS = LoadShaders(shader_info_mrt);
+
+	loc_ModelViewProjectionMatrix_TXPS = glGetUniformLocation(h_ShaderProgram_TXPS, "u_ModelViewProjectionMatrix");
+	loc_ModelViewMatrix_TXPS = glGetUniformLocation(h_ShaderProgram_TXPS, "u_ModelViewMatrix");
+	loc_ModelViewMatrixInvTrans_TXPS = glGetUniformLocation(h_ShaderProgram_TXPS, "u_ModelViewMatrixInvTrans");
+
+	loc_material.ambient_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.ambient_color");
+	loc_material.diffuse_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.diffuse_color");
+	loc_material.specular_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.specular_color");
+	loc_material.emissive_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.emissive_color");
+	loc_material.specular_exponent = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.specular_exponent");
+
+	loc_texture = glGetUniformLocation(h_ShaderProgram_TXPS, "u_base_texture");
+
+	h_ShaderProgram_deferred = LoadShaders(shader_info_deferred);
+	glUseProgram(h_ShaderProgram_deferred);
+	glUniform1i(glGetUniformLocation(h_ShaderProgram_deferred, "g_position"), N_TEXTURES_USED);
+	glUniform1i(glGetUniformLocation(h_ShaderProgram_deferred, "g_normal"), N_TEXTURES_USED + 1);
+	glUniform1i(glGetUniformLocation(h_ShaderProgram_deferred, "g_albedo_spec"), N_TEXTURES_USED + 2);
+	glUseProgram(0);
+}
+
+void display() {
+#if MODE == FORWARD
+	draw_scene();
+#else
+	// geometry pass
+	glBindFramebuffer(GL_FRAMEBUFFER, g_buffer);
+	draw_scene();
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	// lighting pass
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glUseProgram(h_ShaderProgram_deferred);
+	glActiveTexture(GL_TEXTURE0 + N_TEXTURES_USED);
+	glBindTexture(GL_TEXTURE_2D, g_position);
+	glActiveTexture(GL_TEXTURE1 + N_TEXTURES_USED);
+	glBindTexture(GL_TEXTURE_2D, g_normal);
+	glActiveTexture(GL_TEXTURE2 + N_TEXTURES_USED);
+	glBindTexture(GL_TEXTURE_2D, g_albedo_spec);
+
+	// draw quad
+	unsigned int quadVAO = 0;
+	unsigned int quadVBO;
+	float quadVertices[] = {
+		// positions        // texture Coords
+		-1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+		-1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+		 1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+		 1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+	};
+	glGenVertexArrays(1, &quadVAO);
+	glGenBuffers(1, &quadVBO);
+	glBindVertexArray(quadVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+	glBindVertexArray(quadVAO);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	glBindVertexArray(0);
+
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glUseProgram(0);
+#endif
+
+	glutSwapBuffers();
+}
+
 #define N_MESSAGE_LINES 1
 void main(int argc, char *argv[]) {
 	char program_name[64] = "Sogang CSE4170 5.4.Tiger_Texture_PS_GLSL";
@@ -1261,7 +1376,7 @@ void main(int argc, char *argv[]) {
 
 	glutInit(&argc, argv);
   	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE | GLUT_DEPTH);
-	glutInitWindowSize(800, 800);
+	glutInitWindowSize(window_width, window_height);
 	glutInitContextVersion(4, 6);
 	glutInitContextProfile(GLUT_CORE_PROFILE);
 	glutCreateWindow(program_name);
