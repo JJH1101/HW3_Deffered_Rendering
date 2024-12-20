@@ -1,0 +1,52 @@
+# OS-specific files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Build outputs
+*.o
+*.obj
+*.exe
+*.lib
+*.a
+*.so
+*.dll
+*.dylib
+*.out
+bin/
+build/
+Debug/
+Release/
+
+# IDE-specific files
+.vs/
+*.vcxproj
+*.vcxproj.user
+*.suo
+*.opendb
+*.tlog
+*.idb
+*.pdb
+ipch/
+.idea/
+cmake-build-*/
+
+# External libraries
+deps/
+vendor/
+third_party/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+
+# Precompiled headers
+*.gch
