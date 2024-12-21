@@ -61,5 +61,17 @@
     <None Include="Shaders\deferred_range.frag">
       <Filter>리소스 파일</Filter>
     </None>
+    <None Include="Shaders\sphere.vert">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="Shaders\stencil.frag">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="Shaders\lighting.frag">
+      <Filter>리소스 파일</Filter>
+    </None>
+    <None Include="Shaders\ambient.frag">
+      <Filter>리소스 파일</Filter>
+    </None>
   </ItemGroup>
 </Project>

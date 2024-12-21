@@ -417,6 +417,28 @@ void draw_tiger(void) {
 // callbacks
 float PRP_distance_scale[6] = { 0.5f, 1.0f, 2.5f, 5.0f, 10.0f, 20.0f };
 
+void draw_spheres() {
+	//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	glUseProgram(h_ShaderProgram_TXPS);
+	set_material_floor();
+	glUniform1i(loc_texture, TEXTURE_ID_FLOOR);
+	for (int i = 0; i < NUMBER_OF_LIGHT_SUPPORTED; i++)
+	{
+		unsigned int light_idx = i;
+		ModelViewMatrix = glm::translate(ViewMatrix, glm::vec3(light[light_idx].position[0], light[light_idx].position[1], light[light_idx].position[2]));
+		ModelViewMatrix = glm::scale(ModelViewMatrix, glm::vec3(light[light_idx].light_attenuation_factors[3]));
+		ModelViewProjectionMatrix = ProjectionMatrix * ModelViewMatrix;
+		ModelViewMatrixInvTrans = glm::inverseTranspose(glm::mat3(ModelViewMatrix));
+		glUniformMatrix4fv(loc_ModelViewProjectionMatrix_TXPS, 1, GL_FALSE, &ModelViewProjectionMatrix[0][0]);
+		glUniformMatrix4fv(loc_ModelViewMatrix_TXPS, 1, GL_FALSE, &ModelViewMatrix[0][0]);
+		glUniformMatrix3fv(loc_ModelViewMatrixInvTrans_TXPS, 1, GL_FALSE, &ModelViewMatrixInvTrans[0][0]);
+		draw_sphere();
+	}
+
+	glUseProgram(0);
+}
+
 // Junhyeok modified
 void draw_scene(void) {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -434,9 +456,10 @@ void draw_scene(void) {
 	glUniformMatrix4fv(loc_ModelViewMatrix_TXPS, 1, GL_FALSE, &ModelViewMatrix[0][0]);
 	glUniformMatrix3fv(loc_ModelViewMatrixInvTrans_TXPS, 1, GL_FALSE, &ModelViewMatrixInvTrans[0][0]);
 	draw_floor();
-	
+
  	set_material_tiger();
 	glUniform1i(loc_texture, TEXTURE_ID_TIGER);
+
  	ModelViewMatrix = glm::rotate(ViewMatrix, -rotation_angle_tiger, glm::vec3(0.0f, 1.0f, 0.0f));
 	ModelViewMatrix = glm::translate(ModelViewMatrix, glm::vec3(200.0f, 0.0f, 0.0f));
 	ModelViewMatrix = glm::rotate(ModelViewMatrix, -90.0f*TO_RADIAN, glm::vec3(1.0f, 0.0f, 0.0f));
@@ -983,7 +1006,7 @@ void keyboard(unsigned char key, int x, int y) {
 				light[i].position[2], light[i].position[3]);
 			glUniform4fv(loc_light[i].position, 1, &position_EC[0]);
 		}
-		
+
 		glUseProgram(0);
 		glutPostRedisplay();
 		break;
@@ -1006,6 +1029,18 @@ void reshape(int width, int height) {
 
 	window_width = width;
 	window_height = height;
+
+#if MODE != FORWARD
+	delete_G_buffer();
+	create_G_buffer();
+
+	#if MODE == DEFERRED_STENCIL
+	glUseProgram(h_ShaderProgram_deferred);
+	glUniform2f(loc_window_size, static_cast<float>(window_width), static_cast<float>(window_height));
+	glUseProgram(0);
+	#endif
+
+#endif
 
 	glViewport(0, 0, width, height);
 	
@@ -1090,11 +1125,13 @@ void initialize_lights_and_material(void) { // follow OpenGL conventions for ini
 
 #if MODE == FORWARD
 	glUseProgram(h_ShaderProgram_TXPS);
+	glUniform4fv(loc_global_ambient_color, 1, &global_ambient[0]);
 #else
+	glUseProgram(h_ShaderProgram_ambient);
+	glUniform4fv(loc_global_ambient_color, 1, &global_ambient[0]);
 	glUseProgram(h_ShaderProgram_deferred);
 #endif
 
-	glUniform4f(loc_global_ambient_color, 0.115f, 0.115f, 0.115f, 1.0f);
 	for (i = 0; i < NUMBER_OF_LIGHT_SUPPORTED; i++) {
 		glUniform1i(loc_light[i].light_on, 0); // turn off all lights initially
 		glUniform4f(loc_light[i].position, 0.0f, 0.0f, 1.0f, 0.0f);
@@ -1166,8 +1203,11 @@ void set_up_scene_lights(void) {
 	glUseProgram(h_ShaderProgram_deferred);
 #endif
 	for (int i = 0; i < NUMBER_OF_LIGHT_SUPPORTED; i++) {
+
 		glUniform1i(loc_light[i].light_on, light[i].light_on);
-		glUniform4fv(loc_light[i].position, 1, light[i].position);
+		glm::vec4 position_EC = ViewMatrix * glm::vec4(light[i].position[0], light[i].position[1],
+			light[i].position[2], light[i].position[3]);
+		glUniform4fv(loc_light[i].position, 1, &position_EC[0]);
 		glUniform4fv(loc_light[i].ambient_color, 1, light[i].ambient_color);
 		glUniform4fv(loc_light[i].diffuse_color, 1, light[i].diffuse_color);
 		glUniform4fv(loc_light[i].specular_color, 1, light[i].specular_color);
@@ -1185,8 +1225,11 @@ void prepare_scene(void) {
 	prepare_axes();
 	prepare_floor();
 	prepare_tiger();
+	prepare_sphere();
+
 	set_up_scene_lights();
 #if MODE != FORWARD
+	prepare_quad();
 	prepare_materials();
 #endif
 }
@@ -1281,6 +1324,45 @@ void create_random_lights() {
 	}
 }
 
+void prepare_sphere() {
+	int i, n_bytes_per_vertex, n_bytes_per_triangle = 0;
+
+	n_bytes_per_vertex = 8 * sizeof(float); // 3 for vertex, 3 for normal, and 2 for texcoord
+	n_bytes_per_triangle = 3 * n_bytes_per_vertex;
+
+	GLfloat* sphere_vertices;
+	n_triangles_sphere = read_geometry(&sphere_vertices, n_bytes_per_triangle, "Data/sphere_vnt.geom");
+
+	// initialize vertex buffer object
+	glGenBuffers(1, &sphereVBO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, sphereVBO);
+	glBufferData(GL_ARRAY_BUFFER, n_triangles_sphere * n_bytes_per_triangle, sphere_vertices, GL_STATIC_DRAW);
+
+	free(sphere_vertices);
+
+	// initialize vertex array object
+	glGenVertexArrays(1, &sphereVAO);
+	glBindVertexArray(sphereVAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, sphereVBO);
+	glVertexAttribPointer(LOC_VERTEX, 3, GL_FLOAT, GL_FALSE, n_bytes_per_vertex, BUFFER_OFFSET(0));
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(LOC_NORMAL, 3, GL_FLOAT, GL_FALSE, n_bytes_per_vertex, BUFFER_OFFSET(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(LOC_TEXCOORD, 2, GL_FLOAT, GL_FALSE, n_bytes_per_vertex, BUFFER_OFFSET(6 * sizeof(float)));
+	glEnableVertexAttribArray(2);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+}
+
+void draw_sphere() {
+	glBindVertexArray(sphereVAO);
+	glDrawArrays(GL_TRIANGLES, 0, n_triangles_sphere * 3);
+	glBindVertexArray(0);
+}
+
 #if MODE != FORWARD
 void create_G_buffer() {
 	glGenFramebuffers(1, &g_buffer);
@@ -1314,16 +1396,44 @@ void create_G_buffer() {
 	unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
 	glDrawBuffers(3, attachments);
 	
+#if MODE != DEFERRED_STENCIL
 	// depth
-	unsigned int rboDepth;
-	glGenRenderbuffers(1, &rboDepth);
-	glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
+	glGenRenderbuffers(1, &g_rbo_depth);
+	glBindRenderbuffer(GL_RENDERBUFFER, g_rbo_depth);
 	glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, window_width, window_height);
-	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, g_rbo_depth);
+#else
+	// final result
+	glGenTextures(1, &g_final);
+	glBindTexture(GL_TEXTURE_2D, g_final);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, window_width, window_width, 0, GL_RGB, GL_FLOAT, NULL);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT3, GL_TEXTURE_2D, g_final, 0);
 
+	// depth stencil
+	glGenTextures(1, &g_depth_stencil);
+	glBindTexture(GL_TEXTURE_2D, g_depth_stencil);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH32F_STENCIL8, window_width, window_height, 0, GL_DEPTH_STENCIL, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, NULL);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, g_depth_stencil, 0);
+#endif
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+void delete_G_buffer() {
+	glDeleteTextures(1, &g_position);
+	glDeleteTextures(1, &g_normal);
+	glDeleteTextures(1, &g_albedo_spec);
+#if MODE == DEFERRED_STENCIL
+	glDeleteTextures(1, &g_final);
+	glDeleteTextures(1, &g_depth_stencil);
+#else
+	glDeleteRenderbuffers(1, &g_rbo_depth);
+#endif
+	glDeleteFramebuffers(1, &g_buffer);
+}
+
+#if MODE != DEFERRED_STENCIL
 void prepare_shader_deferred() {
 	int i;
 	char string[256];
@@ -1332,30 +1442,27 @@ void prepare_shader_deferred() {
 		{ GL_FRAGMENT_SHADER, "Shaders/mrt.frag" },
 		{ GL_NONE, NULL }
 	};
-	ShaderInfo shader_info_deferred[3] = {
-		{ GL_VERTEX_SHADER, "Shaders/deferred.vert" },
-#if MODE == DEFERRED
-		{ GL_FRAGMENT_SHADER, "Shaders/deferred.frag" },
-#else
-		{ GL_FRAGMENT_SHADER, "Shaders/deferred_range.frag" },
-#endif
-		{ GL_NONE, NULL }
-	};
 
 	h_ShaderProgram_TXPS = LoadShaders(shader_info_mrt);
+	glUseProgram(h_ShaderProgram_TXPS);
 
 	loc_ModelViewProjectionMatrix_TXPS = glGetUniformLocation(h_ShaderProgram_TXPS, "u_ModelViewProjectionMatrix");
 	loc_ModelViewMatrix_TXPS = glGetUniformLocation(h_ShaderProgram_TXPS, "u_ModelViewMatrix");
 	loc_ModelViewMatrixInvTrans_TXPS = glGetUniformLocation(h_ShaderProgram_TXPS, "u_ModelViewMatrixInvTrans");
 
-	//loc_material.ambient_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.ambient_color");
-	//loc_material.diffuse_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.diffuse_color");
-	//loc_material.specular_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.specular_color");
-	//loc_material.emissive_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.emissive_color");
-	//loc_material.specular_exponent = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.specular_exponent");
-
 	loc_material_idx = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material_idx");
 	loc_texture = glGetUniformLocation(h_ShaderProgram_TXPS, "u_base_texture");
+
+
+	ShaderInfo shader_info_deferred[3] = {
+	{ GL_VERTEX_SHADER, "Shaders/deferred.vert" },
+#if MODE == DEFERRED
+		{ GL_FRAGMENT_SHADER, "Shaders/deferred.frag" },
+#else
+		{ GL_FRAGMENT_SHADER, "Shaders/deferred_range.frag" }, 
+#endif
+		{ GL_NONE, NULL }
+	};
 
 	h_ShaderProgram_deferred = LoadShaders(shader_info_deferred);
 	glUseProgram(h_ShaderProgram_deferred);
@@ -1398,20 +1505,110 @@ void prepare_shader_deferred() {
 		loc_materials[i].specular_exponent = glGetUniformLocation(h_ShaderProgram_deferred, string);
 	}
 
-	glUniform4fv(loc_materials[0].ambient_color, 1, material_floor.ambient_color);
-	glUniform4fv(loc_materials[0].diffuse_color, 1, material_floor.diffuse_color);
-	glUniform4fv(loc_materials[0].specular_color, 1, material_floor.specular_color);
-	glUniform1f(loc_materials[0].specular_exponent, material_floor.specular_exponent);
-	glUniform4fv(loc_materials[0].emissive_color, 1, material_floor.emissive_color);
+	glUseProgram(0);
+}
+#else
+void prepare_shader_deferred() {
+	int i;
+	char string[256];
+	ShaderInfo shader_info_mrt[3] = {
+		{ GL_VERTEX_SHADER, "Shaders/mrt.vert" },
+		{ GL_FRAGMENT_SHADER, "Shaders/mrt.frag" },
+		{ GL_NONE, NULL }
+	};
 
-	glUniform4fv(loc_materials[1].ambient_color, 1, material_tiger.ambient_color);
-	glUniform4fv(loc_materials[1].diffuse_color, 1, material_tiger.diffuse_color);
-	glUniform4fv(loc_materials[1].specular_color, 1, material_tiger.specular_color);
-	glUniform1f(loc_materials[1].specular_exponent, material_tiger.specular_exponent);
-	glUniform4fv(loc_materials[1].emissive_color, 1, material_tiger.emissive_color);
+	h_ShaderProgram_TXPS = LoadShaders(shader_info_mrt);
+	glUseProgram(h_ShaderProgram_TXPS);
+
+	loc_ModelViewProjectionMatrix_TXPS = glGetUniformLocation(h_ShaderProgram_TXPS, "u_ModelViewProjectionMatrix");
+	loc_ModelViewMatrix_TXPS = glGetUniformLocation(h_ShaderProgram_TXPS, "u_ModelViewMatrix");
+	loc_ModelViewMatrixInvTrans_TXPS = glGetUniformLocation(h_ShaderProgram_TXPS, "u_ModelViewMatrixInvTrans");
+
+	loc_material_idx = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material_idx");
+	loc_texture = glGetUniformLocation(h_ShaderProgram_TXPS, "u_base_texture");
+
+	ShaderInfo shader_info_stencil[3] = {
+	{ GL_VERTEX_SHADER, "Shaders/sphere.vert" },
+	{ GL_FRAGMENT_SHADER, "Shaders/stencil.frag" },
+	{ GL_NONE, NULL }
+	};
+
+	h_ShaderProgram_stencil = LoadShaders(shader_info_mrt);
+	loc_ModelViewProjectionMatrix_sphere = glGetUniformLocation(h_ShaderProgram_stencil, "u_ModelViewProjectionMatrix");
+
+	ShaderInfo shader_info_deferred[3] = {
+	{ GL_VERTEX_SHADER, "Shaders/sphere.vert" },
+	{ GL_FRAGMENT_SHADER, "Shaders/lighting.frag" },
+	{ GL_NONE, NULL }
+	};
+
+	h_ShaderProgram_deferred = LoadShaders(shader_info_deferred);
+	glUseProgram(h_ShaderProgram_deferred);
+	loc_ModelViewProjectionMatrix_deferred = glGetUniformLocation(h_ShaderProgram_deferred, "u_ModelViewProjectionMatrix");
+
+	glUniform1i(glGetUniformLocation(h_ShaderProgram_deferred, "g_position"), N_TEXTURES_USED);
+	glUniform1i(glGetUniformLocation(h_ShaderProgram_deferred, "g_normal"), N_TEXTURES_USED + 1);
+	glUniform1i(glGetUniformLocation(h_ShaderProgram_deferred, "g_albedo_spec"), N_TEXTURES_USED + 2);
+
+	loc_light_idx = glGetUniformLocation(h_ShaderProgram_deferred, "u_light_idx");
+
+	for (i = 0; i < NUMBER_OF_LIGHT_SUPPORTED; i++) {
+		sprintf(string, "u_light[%d].light_on", i);
+		loc_light[i].light_on = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].position", i);
+		loc_light[i].position = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].ambient_color", i);
+		loc_light[i].ambient_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].diffuse_color", i);
+		loc_light[i].diffuse_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].specular_color", i);
+		loc_light[i].specular_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].spot_direction", i);
+		loc_light[i].spot_direction = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].spot_exponent", i);
+		loc_light[i].spot_exponent = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].spot_cutoff_angle", i);
+		loc_light[i].spot_cutoff_angle = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].light_attenuation_factors", i);
+		loc_light[i].light_attenuation_factors = glGetUniformLocation(h_ShaderProgram_deferred, string);
+	}
+
+	for (i = 0; i < NUMBER_OF_MATERIAL_SUPPORTED; i++) {
+		sprintf(string, "u_material[%d].ambient_color", i);
+		loc_materials[i].ambient_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_material[%d].diffuse_color", i);
+		loc_materials[i].diffuse_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_material[%d].specular_color", i);
+		loc_materials[i].specular_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_material[%d].emissive_color", i);
+		loc_materials[i].emissive_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_material[%d].specular_exponent", i);
+		loc_materials[i].specular_exponent = glGetUniformLocation(h_ShaderProgram_deferred, string);
+	}
+
+	loc_window_size = glGetUniformLocation(h_ShaderProgram_deferred, "u_window_size");
+
+	glUniform2f(loc_window_size, static_cast<float>(window_width), static_cast<float>(window_height));
+
+	ShaderInfo shader_info_ambient[3] = {
+	{ GL_VERTEX_SHADER, "Shaders/deferred.vert" },
+	{ GL_FRAGMENT_SHADER, "Shaders/ambient.frag" },
+	{ GL_NONE, NULL }
+	};
+
+	h_ShaderProgram_ambient = LoadShaders(shader_info_ambient);
+	glUseProgram(h_ShaderProgram_ambient);
+	glUniform1i(glGetUniformLocation(h_ShaderProgram_ambient, "g_albedo_spec"), N_TEXTURES_USED + 2);
+	loc_global_ambient_color = glGetUniformLocation(h_ShaderProgram_ambient, "u_global_ambient_color");
+	for (i = 0; i < NUMBER_OF_MATERIAL_SUPPORTED; i++) {
+		sprintf(string, "u_emissive_color[%d]", i);
+		loc_emissive_color[i] = glGetUniformLocation(h_ShaderProgram_ambient, string);
+	}
 
 	glUseProgram(0);
 }
+#endif
+
 
 void prepare_materials() {
 	glUseProgram(h_ShaderProgram_deferred);
@@ -1428,19 +1625,16 @@ void prepare_materials() {
 	glUniform1f(loc_materials[1].specular_exponent, material_tiger.specular_exponent);
 	glUniform4fv(loc_materials[1].emissive_color, 1, material_tiger.emissive_color);
 
+#if MODE == DEFERRED_STENCIL
+	glUseProgram(h_ShaderProgram_ambient);
+	glUniform4fv(loc_emissive_color[0], 1, material_floor.emissive_color);
+	glUniform4fv(loc_emissive_color[1], 1, material_tiger.emissive_color);
+#endif
+
 	glUseProgram(0);
 }
 
-void draw_quad() {
-	unsigned int quadVAO = 0;
-	unsigned int quadVBO;
-	float quadVertices[] = {
-		// positions        // texture Coords
-		-1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
-		-1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-		 1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-		 1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
-	};
+void prepare_quad() {
 	glGenVertexArrays(1, &quadVAO);
 	glGenBuffers(1, &quadVBO);
 	glBindVertexArray(quadVAO);
@@ -1450,19 +1644,135 @@ void draw_quad() {
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
 	glEnableVertexAttribArray(1);
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+	glBindVertexArray(0);
+}
+
+void draw_quad() {
 	glBindVertexArray(quadVAO);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	glBindVertexArray(0);
 }
+
+#if MODE == DEFERRED_STENCIL
+
+void geometry_pass() {
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g_buffer);
+	unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+	glDrawBuffers(3, attachments);
+
+	glDepthMask(GL_TRUE);
+
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	glEnable(GL_DEPTH_TEST);
+
+	draw_scene();
+
+	glDepthMask(GL_FALSE);
+}
+
+void stencil_pass(unsigned int light_idx) {
+	glUseProgram(h_ShaderProgram_stencil);
+
+	glDrawBuffer(GL_NONE);
+
+	glEnable(GL_DEPTH_TEST);
+	glDisable(GL_CULL_FACE);
+	glClear(GL_STENCIL_BUFFER_BIT);
+
+	glStencilFunc(GL_ALWAYS, 0, 0);
+	glStencilOpSeparate(GL_BACK, GL_KEEP, GL_INCR_WRAP, GL_KEEP);
+	glStencilOpSeparate(GL_FRONT, GL_KEEP, GL_DECR_WRAP, GL_KEEP);
+
+	ModelViewMatrix = glm::translate(ViewMatrix, glm::vec3(light[light_idx].position[0], light[light_idx].position[1], light[light_idx].position[2]));
+	ModelViewMatrix = glm::scale(ModelViewMatrix, glm::vec3(light[light_idx].light_attenuation_factors[3]));
+	ModelViewProjectionMatrix = ProjectionMatrix * ModelViewMatrix;
+	glUniformMatrix4fv(loc_ModelViewProjectionMatrix_sphere, 1, GL_FALSE, &ModelViewProjectionMatrix[0][0]);
+	
+	draw_sphere();
+
+	glUseProgram(0);
+}
+
+void lighting_pass(unsigned int light_idx) {
+	glDrawBuffer(GL_COLOR_ATTACHMENT3);
+
+	glActiveTexture(GL_TEXTURE0 + N_TEXTURES_USED);
+	glBindTexture(GL_TEXTURE_2D, g_position);
+	glActiveTexture(GL_TEXTURE1 + N_TEXTURES_USED);
+	glBindTexture(GL_TEXTURE_2D, g_normal);
+	glActiveTexture(GL_TEXTURE2 + N_TEXTURES_USED);
+	glBindTexture(GL_TEXTURE_2D, g_albedo_spec);
+
+	glUseProgram(h_ShaderProgram_deferred);
+
+	glStencilFunc(GL_NOTEQUAL, 0, 0xFF);
+
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_ONE, GL_ONE);
+
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_FRONT);
+
+	ModelViewMatrix = glm::translate(ViewMatrix, glm::vec3(light[light_idx].position[0], light[light_idx].position[1], light[light_idx].position[2]));
+	ModelViewMatrix = glm::scale(ModelViewMatrix, glm::vec3(light[light_idx].light_attenuation_factors[3]));
+	ModelViewProjectionMatrix = ProjectionMatrix * ModelViewMatrix;
+	glUniformMatrix4fv(loc_ModelViewProjectionMatrix_deferred, 1, GL_FALSE, &ModelViewProjectionMatrix[0][0]);
+	glUniform1i(loc_light_idx, light_idx);
+
+	draw_sphere();
+
+	glUseProgram(0);
+
+	glCullFace(GL_BACK);
+	glDisable(GL_BLEND);
+}
+
+void ambient_pass() {
+	glDrawBuffer(GL_COLOR_ATTACHMENT3);
+	glActiveTexture(GL_TEXTURE2 + N_TEXTURES_USED);
+	glBindTexture(GL_TEXTURE_2D, g_albedo_spec);
+
+	glUseProgram(h_ShaderProgram_ambient);
+
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_ONE, GL_ONE);
+
+	glEnable(GL_CULL_FACE);
+	glCullFace(GL_FRONT);
+
+	draw_quad();
+
+	glUseProgram(0);
+
+	glCullFace(GL_BACK);
+	glDisable(GL_BLEND);
+}
+
+void final_pass() {
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, g_buffer);
+	glReadBuffer(GL_COLOR_ATTACHMENT3);
+
+	glBlitFramebuffer(0, 0, window_width, window_height,
+		0, 0, window_width, window_height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+}
+#endif
 #endif
 
 void display() {
 #if MODE == FORWARD
 	draw_scene();
 #else
+	#if MODE != DEFERRED_STENCIL
 	// geometry pass
 	glBindFramebuffer(GL_FRAMEBUFFER, g_buffer);
 	draw_scene();
+	//draw_spheres();
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	// lighting pass
@@ -1479,6 +1789,29 @@ void display() {
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glUseProgram(0);
+
+	#else
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, g_buffer);
+	glDrawBuffer(GL_COLOR_ATTACHMENT3);
+	glClear(GL_COLOR_BUFFER_BIT);
+
+	geometry_pass();
+
+	ambient_pass();
+
+	glEnable(GL_STENCIL_TEST);
+
+	for (unsigned int i = 0; i < NUMBER_OF_LIGHT_SUPPORTED; i++) {
+		stencil_pass(i);
+		lighting_pass(i);
+	}
+
+	glDisable(GL_STENCIL_TEST);
+
+	final_pass();
+
+	#endif
+
 #endif
 
 	glutSwapBuffers();

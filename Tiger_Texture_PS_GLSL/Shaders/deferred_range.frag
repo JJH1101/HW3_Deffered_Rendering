@@ -102,7 +102,7 @@ void main() {
 	vec3 P_EC = texture(g_position, tex_coords).rgb;
 	vec3 N_EC = texture(g_normal, tex_coords).rgb;
 	vec4 diffuse = vec4(texture(g_albedo_spec, tex_coords).rgb, 1.0f);
-	int mat_idx = int(texture(g_albedo_spec, tex_coords).a * 10 + 0.1);
+	int mat_idx = int(texture(g_albedo_spec, tex_coords).a * 10 + 0.1f);
 
 	final_color = lighting_equation_textured(P_EC, normalize(N_EC), diffuse, mat_idx);
 }
