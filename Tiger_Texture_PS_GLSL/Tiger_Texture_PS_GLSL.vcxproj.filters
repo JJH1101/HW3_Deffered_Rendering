@@ -58,5 +58,8 @@
     <None Include="Shaders\deferred.frag">
       <Filter>리소스 파일</Filter>
     </None>
+    <None Include="Shaders\deferred_range.frag">
+      <Filter>리소스 파일</Filter>
+    </None>
   </ItemGroup>
 </Project>

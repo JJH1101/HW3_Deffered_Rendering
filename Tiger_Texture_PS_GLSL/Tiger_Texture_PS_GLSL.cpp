@@ -1174,6 +1174,7 @@ void set_up_scene_lights(void) {
 
 #if MODE == DEFERRED_RANGE || MODE == DEFERRED_STENCIL
 		glUniform4fv(loc_light[i].light_attenuation_factors, 1, light[i].light_attenuation_factors);
+		//printf("%f\n", light[i].light_attenuation_factors[3]);
 #endif
 	}
 
@@ -1258,7 +1259,8 @@ void create_random_lights() {
 		light[i].diffuse_color[2] = 0.f;
 		light[i].diffuse_color[3] = 1.0f;
 
-		light[i].diffuse_color[i % 3] = random_float(0.2f, 0.5f);
+		float diffuse = random_float(0.2f, 0.5f);
+		light[i].diffuse_color[i % 3] = diffuse;
 
 		float spec = random_float(0.0f, 0.2f);
 		light[i].specular_color[0] = 0.f; light[i].specular_color[1] = 0.f;
@@ -1273,7 +1275,7 @@ void create_random_lights() {
 			(- LIGHT_ATTENUATION_LINEAR
 			+ sqrtf(LIGHT_ATTENUATION_LINEAR * LIGHT_ATTENUATION_LINEAR 
 			- 4 * LIGHT_ATTENUATION_QUADRATIC 
-			* (LIGHT_ATTENUATION_CONSTANT - light[i].diffuse_color[i % 3] * 51))) 
+			* (LIGHT_ATTENUATION_CONSTANT - diffuse * 51)))
 			/ (2 * LIGHT_ATTENUATION_QUADRATIC);
 #endif
 	}
@@ -1332,7 +1334,11 @@ void prepare_shader_deferred() {
 	};
 	ShaderInfo shader_info_deferred[3] = {
 		{ GL_VERTEX_SHADER, "Shaders/deferred.vert" },
+#if MODE == DEFERRED
 		{ GL_FRAGMENT_SHADER, "Shaders/deferred.frag" },
+#else
+		{ GL_FRAGMENT_SHADER, "Shaders/deferred_range.frag" },
+#endif
 		{ GL_NONE, NULL }
 	};
 
