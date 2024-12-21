@@ -8,20 +8,12 @@ in vec3 v_position_EC;
 in vec3 v_normal_EC;
 in vec2 v_tex_coord;
 
-struct MATERIAL {
-	vec4 ambient_color;
-	vec4 diffuse_color;
-	vec4 specular_color;
-	vec4 emissive_color;
-	float specular_exponent;
-};
-
-uniform MATERIAL u_material;
+uniform int u_material_idx;
 uniform sampler2D u_base_texture;
 
 void main() {
 	g_position = v_position_EC;
 	g_normal = v_normal_EC;
 	g_albedo_spec.rgb = texture(u_base_texture, v_tex_coord).rgb;
-	g_albedo_spec.a = u_material.specular_color.r;
+	g_albedo_spec.a = u_material_idx * 0.1f;
 }

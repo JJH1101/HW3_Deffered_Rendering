@@ -8,14 +8,12 @@
 #include <FreeImage/FreeImage.h>
 
 #include "Shaders/LoadShaders.h"
-#include "My_Shading.h"
 GLuint h_ShaderProgram_simple, h_ShaderProgram_TXPS; // handles to shader programs
 
 // for simple shaders
 GLint loc_ModelViewProjectionMatrix_simple, loc_primitive_color;
 
 // for Phong Shading (Textured) shaders
-#define NUMBER_OF_LIGHT_SUPPORTED 4 
 GLint loc_global_ambient_color;
 loc_light_Parameters loc_light[NUMBER_OF_LIGHT_SUPPORTED];
 loc_Material_Parameters loc_material;
@@ -218,11 +216,15 @@ void prepare_axes(void) { // draw coordinate axes
 
  void set_material_floor(void) {
 	 // assume ShaderProgram_TXPS is used
+#if MODE == FORWARD
 	 glUniform4fv(loc_material.ambient_color, 1, material_floor.ambient_color);
 	 glUniform4fv(loc_material.diffuse_color, 1, material_floor.diffuse_color);
 	 glUniform4fv(loc_material.specular_color, 1, material_floor.specular_color);
 	 glUniform1f(loc_material.specular_exponent, material_floor.specular_exponent);
 	 glUniform4fv(loc_material.emissive_color, 1, material_floor.emissive_color);
+#else
+	 glUniform1i(loc_material_idx, 0);
+#endif
  }
 
  void draw_floor(void) {
@@ -393,11 +395,15 @@ void prepare_tiger(void) { // vertices enumerated clockwise
 
 void set_material_tiger(void) {
 	// assume ShaderProgram_TXPS is used
+#if MODE == FORWARD
 	glUniform4fv(loc_material.ambient_color, 1, material_tiger.ambient_color);
 	glUniform4fv(loc_material.diffuse_color, 1, material_tiger.diffuse_color);
 	glUniform4fv(loc_material.specular_color, 1, material_tiger.specular_color);
 	glUniform1f(loc_material.specular_exponent, material_tiger.specular_exponent);
 	glUniform4fv(loc_material.emissive_color, 1, material_tiger.emissive_color);
+#else
+	glUniform1i(loc_material_idx, 1);
+#endif
 }
 
 void draw_tiger(void) {
@@ -833,17 +839,17 @@ void keyboard(unsigned char key, int x, int y) {
 	glm::vec4 position_EC;
 	glm::vec3 direction_EC;
 
-	if ((key >= '0') && (key <= '0' + NUMBER_OF_LIGHT_SUPPORTED - 1)) {
-		int light_ID = (int) (key - '0');
+	//if ((key >= '0') && (key <= '0' + NUMBER_OF_LIGHT_SUPPORTED - 1)) {
+	//	int light_ID = (int) (key - '0');
 
-		glUseProgram(h_ShaderProgram_TXPS);
-		light[light_ID].light_on = 1 - light[light_ID].light_on;
-		glUniform1i(loc_light[light_ID].light_on, light[light_ID].light_on);
-		glUseProgram(0);
+	//	glUseProgram(h_ShaderProgram_TXPS);
+	//	light[light_ID].light_on = 1 - light[light_ID].light_on;
+	//	glUniform1i(loc_light[light_ID].light_on, light[light_ID].light_on);
+	//	glUseProgram(0);
 
-		glutPostRedisplay();
-		return;
-	}
+	//	glutPostRedisplay();
+	//	return;
+	//}
 
 	switch (key) {
 	case 'a': // toggle the animation effect.
@@ -855,110 +861,110 @@ void keyboard(unsigned char key, int x, int y) {
 		else
 			fprintf(stdout, "^^^ Animation mode OFF.\n");
 		break;
-	case 'f': 
-		flag_fog = 1 - flag_fog;
-		if (flag_fog)
-			fprintf(stdout, "^^^ Fog mode ON.\n");
-		else
-			fprintf(stdout, "^^^ Fog mode OFF.\n");
-		glUseProgram(h_ShaderProgram_TXPS);
-		glUniform1i(loc_flag_fog, flag_fog);
-		glUseProgram(0);
-		glutPostRedisplay();
-		break;
-	case 't':
-		flag_texture_mapping = 1 - flag_texture_mapping;
-		if (flag_texture_mapping)
-			fprintf(stdout, "^^^ Texture mapping ON.\n");
-		else 
-			fprintf(stdout, "^^^ Texture mapping OFF.\n");
-		glUseProgram(h_ShaderProgram_TXPS);
-		glUniform1i(loc_flag_texture_mapping, flag_texture_mapping);
-		glUseProgram(0);
-		glutPostRedisplay();
-		break;
-	case 'y': // Change the floor texture's magnification filter.
-		flag_floor_mag_filter = (flag_floor_mag_filter + 1) % 2;
-		glActiveTexture(GL_TEXTURE0 + TEXTURE_ID_FLOOR);
-		if (flag_floor_mag_filter == 0) {
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); 
-			fprintf(stdout, "^^^ Mag filter for floor: GL_NEAREST.\n");
-		}
-		else {
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			fprintf(stdout, "^^^ Mag filter for floor: GL_LINEAR.\n");
-		}
-		glutPostRedisplay();
-		break;
-	case 'u': // Change the floor texture's minification filter.
-		flag_floor_min_filter = (flag_floor_min_filter + 1) % 3;
-		glActiveTexture(GL_TEXTURE0 + TEXTURE_ID_FLOOR);
-		if (flag_floor_min_filter == 0) {
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			fprintf(stdout, "^^^ Min filter for floor: GL_NEAREST.\n");
-		}
-		else if (flag_floor_min_filter == 1) {
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			fprintf(stdout, "^^^ Min filter for floor: GL_LINEAR.\n");
-		}
-		else {
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-			fprintf(stdout, "^^^ Min filter for floor: GL_LINEAR_MIPMAP_LINEAR.\n");
-		}
-		glutPostRedisplay();
-		break;
-	case 'i': // Change the tiger texture's magnification filter.
-		flag_tiger_mag_filter = (flag_tiger_mag_filter + 1) % 2;
-		glActiveTexture(GL_TEXTURE0 + TEXTURE_ID_TIGER);
-		if (flag_tiger_mag_filter == 0) {
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-			fprintf(stdout, "^^^ Mag filter for tiger: GL_NEAREST.\n");
-		}
-		else {
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			fprintf(stdout, "^^^ Mag filter for tiger: GL_LINEAR.\n");
-		}
-		glutPostRedisplay();
-		break;
-	case 'o': // Change the tiger texture's minification filter.
-		flag_tiger_min_filter = (flag_tiger_min_filter + 1) % 3;
-		glActiveTexture(GL_TEXTURE0 + TEXTURE_ID_TIGER);
-		if (flag_tiger_min_filter == 0) {
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			fprintf(stdout, "^^^ Min filter for tiger: GL_NEAREST.\n");
-		}
-		else if (flag_tiger_min_filter == 1) {
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-			fprintf(stdout, "^^^ Min filter for tiger: GL_LINEAR.\n");
-		}
-		else {
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-			fprintf(stdout, "^^^ Min filter for tiger: GL_LINEAR_MIPMAP_LINEAR.\n");
-		}
-		glutPostRedisplay();
-		break;
-	case 'c':
-		flag_cull_face = (flag_cull_face + 1) % 3;
-		switch (flag_cull_face) {
-		case 0:
-			fprintf(stdout, "^^^ Face culling OFF.\n");
-			glDisable(GL_CULL_FACE);
-			glutPostRedisplay();
-			break;
-		case 1: // cull back faces;
-			fprintf(stdout, "^^^ BACK face culled.\n");
-			glCullFace(GL_BACK);
-			glEnable(GL_CULL_FACE);
-			glutPostRedisplay();
-			break;
-		case 2: // cull front faces;
-			fprintf(stdout, "^^^ FRONT face culled.\n");
-			glCullFace(GL_FRONT);
-			glEnable(GL_CULL_FACE);
-			glutPostRedisplay();
-			break;
-		}
-		break;
+	//case 'f': 
+	//	flag_fog = 1 - flag_fog;
+	//	if (flag_fog)
+	//		fprintf(stdout, "^^^ Fog mode ON.\n");
+	//	else
+	//		fprintf(stdout, "^^^ Fog mode OFF.\n");
+	//	glUseProgram(h_ShaderProgram_TXPS);
+	//	glUniform1i(loc_flag_fog, flag_fog);
+	//	glUseProgram(0);
+	//	glutPostRedisplay();
+	//	break;
+	//case 't':
+	//	flag_texture_mapping = 1 - flag_texture_mapping;
+	//	if (flag_texture_mapping)
+	//		fprintf(stdout, "^^^ Texture mapping ON.\n");
+	//	else 
+	//		fprintf(stdout, "^^^ Texture mapping OFF.\n");
+	//	glUseProgram(h_ShaderProgram_TXPS);
+	//	glUniform1i(loc_flag_texture_mapping, flag_texture_mapping);
+	//	glUseProgram(0);
+	//	glutPostRedisplay();
+	//	break;
+	//case 'y': // Change the floor texture's magnification filter.
+	//	flag_floor_mag_filter = (flag_floor_mag_filter + 1) % 2;
+	//	glActiveTexture(GL_TEXTURE0 + TEXTURE_ID_FLOOR);
+	//	if (flag_floor_mag_filter == 0) {
+	//		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); 
+	//		fprintf(stdout, "^^^ Mag filter for floor: GL_NEAREST.\n");
+	//	}
+	//	else {
+	//		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	//		fprintf(stdout, "^^^ Mag filter for floor: GL_LINEAR.\n");
+	//	}
+	//	glutPostRedisplay();
+	//	break;
+	//case 'u': // Change the floor texture's minification filter.
+	//	flag_floor_min_filter = (flag_floor_min_filter + 1) % 3;
+	//	glActiveTexture(GL_TEXTURE0 + TEXTURE_ID_FLOOR);
+	//	if (flag_floor_min_filter == 0) {
+	//		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	//		fprintf(stdout, "^^^ Min filter for floor: GL_NEAREST.\n");
+	//	}
+	//	else if (flag_floor_min_filter == 1) {
+	//		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	//		fprintf(stdout, "^^^ Min filter for floor: GL_LINEAR.\n");
+	//	}
+	//	else {
+	//		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	//		fprintf(stdout, "^^^ Min filter for floor: GL_LINEAR_MIPMAP_LINEAR.\n");
+	//	}
+	//	glutPostRedisplay();
+	//	break;
+	//case 'i': // Change the tiger texture's magnification filter.
+	//	flag_tiger_mag_filter = (flag_tiger_mag_filter + 1) % 2;
+	//	glActiveTexture(GL_TEXTURE0 + TEXTURE_ID_TIGER);
+	//	if (flag_tiger_mag_filter == 0) {
+	//		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	//		fprintf(stdout, "^^^ Mag filter for tiger: GL_NEAREST.\n");
+	//	}
+	//	else {
+	//		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	//		fprintf(stdout, "^^^ Mag filter for tiger: GL_LINEAR.\n");
+	//	}
+	//	glutPostRedisplay();
+	//	break;
+	//case 'o': // Change the tiger texture's minification filter.
+	//	flag_tiger_min_filter = (flag_tiger_min_filter + 1) % 3;
+	//	glActiveTexture(GL_TEXTURE0 + TEXTURE_ID_TIGER);
+	//	if (flag_tiger_min_filter == 0) {
+	//		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	//		fprintf(stdout, "^^^ Min filter for tiger: GL_NEAREST.\n");
+	//	}
+	//	else if (flag_tiger_min_filter == 1) {
+	//		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	//		fprintf(stdout, "^^^ Min filter for tiger: GL_LINEAR.\n");
+	//	}
+	//	else {
+	//		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+	//		fprintf(stdout, "^^^ Min filter for tiger: GL_LINEAR_MIPMAP_LINEAR.\n");
+	//	}
+	//	glutPostRedisplay();
+	//	break;
+	//case 'c':
+	//	flag_cull_face = (flag_cull_face + 1) % 3;
+	//	switch (flag_cull_face) {
+	//	case 0:
+	//		fprintf(stdout, "^^^ Face culling OFF.\n");
+	//		glDisable(GL_CULL_FACE);
+	//		glutPostRedisplay();
+	//		break;
+	//	case 1: // cull back faces;
+	//		fprintf(stdout, "^^^ BACK face culled.\n");
+	//		glCullFace(GL_BACK);
+	//		glEnable(GL_CULL_FACE);
+	//		glutPostRedisplay();
+	//		break;
+	//	case 2: // cull front faces;
+	//		fprintf(stdout, "^^^ FRONT face culled.\n");
+	//		glCullFace(GL_FRONT);
+	//		glEnable(GL_CULL_FACE);
+	//		glutPostRedisplay();
+	//		break;
+	//	}
+	//	break;
 	case 'd':
 		PRP_distance_level = (PRP_distance_level + 1) % 6;
 		fprintf(stdout, "^^^ Distance level = %d.\n", PRP_distance_level);
@@ -966,25 +972,29 @@ void keyboard(unsigned char key, int x, int y) {
 		ViewMatrix = glm::lookAt(PRP_distance_scale[PRP_distance_level] * glm::vec3(700.0f, 400.0f, 700.0f),
 			glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
+#if MODE == FORWARD
 		glUseProgram(h_ShaderProgram_TXPS);
-		// Must update the light 1's geometry in EC.
-		//position_EC = ViewMatrix * glm::vec4(light[1].position[0], light[1].position[1],
-		//	light[1].position[2], light[1].position[3]);
-		//glUniform4fv(loc_light[1].position, 1, &position_EC[0]);
-		//direction_EC = glm::mat3(ViewMatrix) * glm::vec3(light[1].spot_direction[0],
-		//	light[1].spot_direction[1], light[1].spot_direction[2]);
-		//glUniform3fv(loc_light[1].spot_direction, 1, &direction_EC[0]);
+#else
+		glUseProgram(h_ShaderProgram_deferred);
+#endif
+		// Must update the lights' geometry in EC.
+		for (int i = 0; i < NUMBER_OF_LIGHT_SUPPORTED; i++) {
+			position_EC = ViewMatrix * glm::vec4(light[i].position[0], light[i].position[1],
+				light[i].position[2], light[i].position[3]);
+			glUniform4fv(loc_light[i].position, 1, &position_EC[0]);
+		}
+		
 		glUseProgram(0);
 		glutPostRedisplay();
 		break;
-	case 'p':
-		flag_polygon_fill = 1 - flag_polygon_fill;
-		if (flag_polygon_fill) 
-			glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-		else
-			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-		glutPostRedisplay();
-		break;
+	//case 'p':
+	//	flag_polygon_fill = 1 - flag_polygon_fill;
+	//	if (flag_polygon_fill) 
+	//		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	//	else
+	//		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+	//	glutPostRedisplay();
+	//	break;
 	case 27: // ESC key
 		glutLeaveMainLoop(); // Incur destuction callback for cleanups
 		break;
@@ -1078,7 +1088,11 @@ void prepare_shader_program(void) {
 void initialize_lights_and_material(void) { // follow OpenGL conventions for initialization
 	int i;
 
+#if MODE == FORWARD
 	glUseProgram(h_ShaderProgram_TXPS);
+#else
+	glUseProgram(h_ShaderProgram_deferred);
+#endif
 
 	glUniform4f(loc_global_ambient_color, 0.115f, 0.115f, 0.115f, 1.0f);
 	for (i = 0; i < NUMBER_OF_LIGHT_SUPPORTED; i++) {
@@ -1096,14 +1110,24 @@ void initialize_lights_and_material(void) { // follow OpenGL conventions for ini
 		glUniform3f(loc_light[i].spot_direction, 0.0f, 0.0f, -1.0f);
 		glUniform1f(loc_light[i].spot_exponent, 0.0f); // [0.0, 128.0]
 		glUniform1f(loc_light[i].spot_cutoff_angle, 180.0f); // [0.0, 90.0] or 180.0 (180.0 for no spot light effect)
-		glUniform4f(loc_light[i].light_attenuation_factors, 1.0f, 0.0f, 0.0f, 0.0f); // .w != 0.0f for no ligth attenuation
+		glUniform4f(loc_light[i].light_attenuation_factors, LIGHT_ATTENUATION_CONSTANT, LIGHT_ATTENUATION_LINEAR, LIGHT_ATTENUATION_QUADRATIC, 1.0f); // .w != 0.0f for no ligth attenuation
 	}
 
+#if MODE == FORWARD
 	glUniform4f(loc_material.ambient_color, 0.2f, 0.2f, 0.2f, 1.0f);
 	glUniform4f(loc_material.diffuse_color, 0.8f, 0.8f, 0.8f, 1.0f);
 	glUniform4f(loc_material.specular_color, 0.0f, 0.0f, 0.0f, 1.0f);
 	glUniform4f(loc_material.emissive_color, 0.0f, 0.0f, 0.0f, 1.0f);
 	glUniform1f(loc_material.specular_exponent, 0.0f); // [0.0, 128.0]
+#else
+	for (i = 0; i < NUMBER_OF_MATERIAL_SUPPORTED; i++) {
+		glUniform4f(loc_materials[i].ambient_color, 0.2f, 0.2f, 0.2f, 1.0f);
+		glUniform4f(loc_materials[i].diffuse_color, 0.8f, 0.8f, 0.8f, 1.0f);
+		glUniform4f(loc_materials[i].specular_color, 0.0f, 0.0f, 0.0f, 1.0f);
+		glUniform4f(loc_materials[i].emissive_color, 0.0f, 0.0f, 0.0f, 1.0f);
+		glUniform1f(loc_materials[i].specular_exponent, 0.0f); // [0.0, 128.0]
+	}
+#endif
 
 	glUseProgram(0);
 }
@@ -1134,62 +1158,25 @@ void initialize_OpenGL(void) {
 }
 
 void set_up_scene_lights(void) {
-	// point_light_EC: use light 0
-	light[0].light_on = 1;
-	light[0].position[0] = 0.0f; light[0].position[1] = 100.0f; 	// point light position in EC
-	light[0].position[2] = 0.0f; light[0].position[3] = 1.0f;
+	create_random_lights();
 
-	light[0].ambient_color[0] = 0.13f; light[0].ambient_color[1] = 0.13f;
-	light[0].ambient_color[2] = 0.13f; light[0].ambient_color[3] = 1.0f;
-
-	light[0].diffuse_color[0] = 0.5f; light[0].diffuse_color[1] = 0.5f;
-	light[0].diffuse_color[2] = 0.5f; light[0].diffuse_color[3] = 1.5f;
-
-	light[0].specular_color[0] = 0.8f; light[0].specular_color[1] = 0.8f;
-	light[0].specular_color[2] = 0.8f; light[0].specular_color[3] = 1.0f;
-
-	// spot_light_WC: use light 1
-	//light[1].light_on = 1;
-	//light[1].position[0] = -200.0f; light[1].position[1] = 500.0f; // spot light position in WC
-	//light[1].position[2] = -200.0f; light[1].position[3] = 1.0f;
-
-	//light[1].ambient_color[0] = 0.152f; light[1].ambient_color[1] = 0.152f;
-	//light[1].ambient_color[2] = 0.152f; light[1].ambient_color[3] = 1.0f;
-
-	//light[1].diffuse_color[0] = 0.572f; light[1].diffuse_color[1] = 0.572f;
-	//light[1].diffuse_color[2] = 0.572f; light[1].diffuse_color[3] = 1.0f;
-
-	//light[1].specular_color[0] = 0.772f; light[1].specular_color[1] = 0.772f;
-	//light[1].specular_color[2] = 0.772f; light[1].specular_color[3] = 1.0f;
-
-	//light[1].spot_direction[0] = 0.0f; light[1].spot_direction[1] = -1.0f; // spot light direction in WC
-	//light[1].spot_direction[2] = 0.0f;
-	//light[1].spot_cutoff_angle = 20.0f;
-	//light[1].spot_exponent = 8.0f;
-
+#if MODE == FORWARD
 	glUseProgram(h_ShaderProgram_TXPS);
-	glUniform1i(loc_light[0].light_on, light[0].light_on);
-	glUniform4fv(loc_light[0].position, 1, light[0].position);
-	glUniform4fv(loc_light[0].ambient_color, 1, light[0].ambient_color);
-	glUniform4fv(loc_light[0].diffuse_color, 1, light[0].diffuse_color);
-	glUniform4fv(loc_light[0].specular_color, 1, light[0].specular_color);
+#else
+	glUseProgram(h_ShaderProgram_deferred);
+#endif
+	for (int i = 0; i < NUMBER_OF_LIGHT_SUPPORTED; i++) {
+		glUniform1i(loc_light[i].light_on, light[i].light_on);
+		glUniform4fv(loc_light[i].position, 1, light[i].position);
+		glUniform4fv(loc_light[i].ambient_color, 1, light[i].ambient_color);
+		glUniform4fv(loc_light[i].diffuse_color, 1, light[i].diffuse_color);
+		glUniform4fv(loc_light[i].specular_color, 1, light[i].specular_color);
 
-	//glUniform1i(loc_light[1].light_on, light[1].light_on);
-	//// need to supply position in EC for shading
-	//glm::vec4 position_EC = ViewMatrix * glm::vec4(light[1].position[0], light[1].position[1],
-	//											light[1].position[2], light[1].position[3]);
-	//glUniform4fv(loc_light[1].position, 1, &position_EC[0]); 
-	//glUniform4fv(loc_light[1].ambient_color, 1, light[1].ambient_color);
-	//glUniform4fv(loc_light[1].diffuse_color, 1, light[1].diffuse_color);
-	//glUniform4fv(loc_light[1].specular_color, 1, light[1].specular_color);
-	//// need to supply direction in EC for shading in this example shader
-	//// note that the viewing transform is a rigid body transform
-	//// thus transpose(inverse(mat3(ViewMatrix)) = mat3(ViewMatrix)
-	//glm::vec3 direction_EC = glm::mat3(ViewMatrix) * glm::vec3(light[1].spot_direction[0], light[1].spot_direction[1], 
-	//															light[1].spot_direction[2]);
-	//glUniform3fv(loc_light[1].spot_direction, 1, &direction_EC[0]); 
-	//glUniform1f(loc_light[1].spot_cutoff_angle, light[1].spot_cutoff_angle);
-	//glUniform1f(loc_light[1].spot_exponent, light[1].spot_exponent);
+#if MODE == DEFERRED_RANGE || MODE == DEFERRED_STENCIL
+		glUniform4fv(loc_light[i].light_attenuation_factors, 1, light[i].light_attenuation_factors);
+#endif
+	}
+
 	glUseProgram(0);
 }
 
@@ -1198,6 +1185,9 @@ void prepare_scene(void) {
 	prepare_floor();
 	prepare_tiger();
 	set_up_scene_lights();
+#if MODE != FORWARD
+	prepare_materials();
+#endif
 }
 
 void initialize_renderer(void) {
@@ -1242,6 +1232,54 @@ void greetings(char *program_name, char messages[][256], int n_message_lines) {
 	initialize_glew();
 }
 
+/* ----------------------------------------------------------------------------------------------- */
+
+float random_float(float min, float max) {
+	return min + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (max - min)));
+}
+
+void create_random_lights() {
+	srand(20191641);
+
+	for (int i = 0; i < NUMBER_OF_LIGHT_SUPPORTED; i++) {
+		light[i].light_on = 1;
+
+		light[i].position[0] = random_float(-500.0f, 500.0f);
+		light[i].position[1] = random_float(50.f, 150.0f);
+		light[i].position[2] = random_float(-500.0f, 500.0f);
+		light[i].position[3] = 1.0f;
+
+		float ambient = random_float(0.0f, 0.1f);
+		light[i].ambient_color[0] = 0.f; light[i].ambient_color[1] = 0.f;
+		light[i].ambient_color[2] = 0.f; light[i].ambient_color[3] = 1.0f;
+
+		light[i].diffuse_color[0] = 0.f;
+		light[i].diffuse_color[1] = 0.f;
+		light[i].diffuse_color[2] = 0.f;
+		light[i].diffuse_color[3] = 1.0f;
+
+		light[i].diffuse_color[i % 3] = random_float(0.2f, 0.5f);
+
+		float spec = random_float(0.0f, 0.2f);
+		light[i].specular_color[0] = 0.f; light[i].specular_color[1] = 0.f;
+		light[i].specular_color[2] = 0.f; light[i].specular_color[3] = 1.0f;
+
+#if MODE == DEFERRED_RANGE || MODE == DEFERRED_STENCIL
+		light[i].light_attenuation_factors[0] = LIGHT_ATTENUATION_CONSTANT;
+		light[i].light_attenuation_factors[1] = LIGHT_ATTENUATION_LINEAR;
+		light[i].light_attenuation_factors[2] = LIGHT_ATTENUATION_QUADRATIC;
+
+		light[i].light_attenuation_factors[3] =
+			(- LIGHT_ATTENUATION_LINEAR
+			+ sqrtf(LIGHT_ATTENUATION_LINEAR * LIGHT_ATTENUATION_LINEAR 
+			- 4 * LIGHT_ATTENUATION_QUADRATIC 
+			* (LIGHT_ATTENUATION_CONSTANT - light[i].diffuse_color[i % 3] * 51))) 
+			/ (2 * LIGHT_ATTENUATION_QUADRATIC);
+#endif
+	}
+}
+
+#if MODE != FORWARD
 void create_G_buffer() {
 	glGenFramebuffers(1, &g_buffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, g_buffer);
@@ -1304,12 +1342,13 @@ void prepare_shader_deferred() {
 	loc_ModelViewMatrix_TXPS = glGetUniformLocation(h_ShaderProgram_TXPS, "u_ModelViewMatrix");
 	loc_ModelViewMatrixInvTrans_TXPS = glGetUniformLocation(h_ShaderProgram_TXPS, "u_ModelViewMatrixInvTrans");
 
-	loc_material.ambient_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.ambient_color");
-	loc_material.diffuse_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.diffuse_color");
-	loc_material.specular_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.specular_color");
-	loc_material.emissive_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.emissive_color");
-	loc_material.specular_exponent = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.specular_exponent");
+	//loc_material.ambient_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.ambient_color");
+	//loc_material.diffuse_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.diffuse_color");
+	//loc_material.specular_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.specular_color");
+	//loc_material.emissive_color = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.emissive_color");
+	//loc_material.specular_exponent = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material.specular_exponent");
 
+	loc_material_idx = glGetUniformLocation(h_ShaderProgram_TXPS, "u_material_idx");
 	loc_texture = glGetUniformLocation(h_ShaderProgram_TXPS, "u_base_texture");
 
 	h_ShaderProgram_deferred = LoadShaders(shader_info_deferred);
@@ -1317,29 +1356,76 @@ void prepare_shader_deferred() {
 	glUniform1i(glGetUniformLocation(h_ShaderProgram_deferred, "g_position"), N_TEXTURES_USED);
 	glUniform1i(glGetUniformLocation(h_ShaderProgram_deferred, "g_normal"), N_TEXTURES_USED + 1);
 	glUniform1i(glGetUniformLocation(h_ShaderProgram_deferred, "g_albedo_spec"), N_TEXTURES_USED + 2);
+
+	loc_global_ambient_color = glGetUniformLocation(h_ShaderProgram_deferred, "u_global_ambient_color");
+	for (i = 0; i < NUMBER_OF_LIGHT_SUPPORTED; i++) {
+		sprintf(string, "u_light[%d].light_on", i);
+		loc_light[i].light_on = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].position", i);
+		loc_light[i].position = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].ambient_color", i);
+		loc_light[i].ambient_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].diffuse_color", i);
+		loc_light[i].diffuse_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].specular_color", i);
+		loc_light[i].specular_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].spot_direction", i);
+		loc_light[i].spot_direction = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].spot_exponent", i);
+		loc_light[i].spot_exponent = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].spot_cutoff_angle", i);
+		loc_light[i].spot_cutoff_angle = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_light[%d].light_attenuation_factors", i);
+		loc_light[i].light_attenuation_factors = glGetUniformLocation(h_ShaderProgram_deferred, string);
+	}
+
+	for (i = 0; i < NUMBER_OF_MATERIAL_SUPPORTED; i++) {
+		sprintf(string, "u_material[%d].ambient_color", i);
+		loc_materials[i].ambient_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_material[%d].diffuse_color", i);
+		loc_materials[i].diffuse_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_material[%d].specular_color", i);
+		loc_materials[i].specular_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_material[%d].emissive_color", i);
+		loc_materials[i].emissive_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
+		sprintf(string, "u_material[%d].specular_exponent", i);
+		loc_materials[i].specular_exponent = glGetUniformLocation(h_ShaderProgram_deferred, string);
+	}
+
+	glUniform4fv(loc_materials[0].ambient_color, 1, material_floor.ambient_color);
+	glUniform4fv(loc_materials[0].diffuse_color, 1, material_floor.diffuse_color);
+	glUniform4fv(loc_materials[0].specular_color, 1, material_floor.specular_color);
+	glUniform1f(loc_materials[0].specular_exponent, material_floor.specular_exponent);
+	glUniform4fv(loc_materials[0].emissive_color, 1, material_floor.emissive_color);
+
+	glUniform4fv(loc_materials[1].ambient_color, 1, material_tiger.ambient_color);
+	glUniform4fv(loc_materials[1].diffuse_color, 1, material_tiger.diffuse_color);
+	glUniform4fv(loc_materials[1].specular_color, 1, material_tiger.specular_color);
+	glUniform1f(loc_materials[1].specular_exponent, material_tiger.specular_exponent);
+	glUniform4fv(loc_materials[1].emissive_color, 1, material_tiger.emissive_color);
+
 	glUseProgram(0);
 }
 
-void display() {
-#if MODE == FORWARD
-	draw_scene();
-#else
-	// geometry pass
-	glBindFramebuffer(GL_FRAMEBUFFER, g_buffer);
-	draw_scene();
-	glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-	// lighting pass
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+void prepare_materials() {
 	glUseProgram(h_ShaderProgram_deferred);
-	glActiveTexture(GL_TEXTURE0 + N_TEXTURES_USED);
-	glBindTexture(GL_TEXTURE_2D, g_position);
-	glActiveTexture(GL_TEXTURE1 + N_TEXTURES_USED);
-	glBindTexture(GL_TEXTURE_2D, g_normal);
-	glActiveTexture(GL_TEXTURE2 + N_TEXTURES_USED);
-	glBindTexture(GL_TEXTURE_2D, g_albedo_spec);
 
-	// draw quad
+	glUniform4fv(loc_materials[0].ambient_color, 1, material_floor.ambient_color);
+	glUniform4fv(loc_materials[0].diffuse_color, 1, material_floor.diffuse_color);
+	glUniform4fv(loc_materials[0].specular_color, 1, material_floor.specular_color);
+	glUniform1f(loc_materials[0].specular_exponent, material_floor.specular_exponent);
+	glUniform4fv(loc_materials[0].emissive_color, 1, material_floor.emissive_color);
+
+	glUniform4fv(loc_materials[1].ambient_color, 1, material_tiger.ambient_color);
+	glUniform4fv(loc_materials[1].diffuse_color, 1, material_tiger.diffuse_color);
+	glUniform4fv(loc_materials[1].specular_color, 1, material_tiger.specular_color);
+	glUniform1f(loc_materials[1].specular_exponent, material_tiger.specular_exponent);
+	glUniform4fv(loc_materials[1].emissive_color, 1, material_tiger.emissive_color);
+
+	glUseProgram(0);
+}
+
+void draw_quad() {
 	unsigned int quadVAO = 0;
 	unsigned int quadVBO;
 	float quadVertices[] = {
@@ -1361,6 +1447,29 @@ void display() {
 	glBindVertexArray(quadVAO);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	glBindVertexArray(0);
+}
+#endif
+
+void display() {
+#if MODE == FORWARD
+	draw_scene();
+#else
+	// geometry pass
+	glBindFramebuffer(GL_FRAMEBUFFER, g_buffer);
+	draw_scene();
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+	// lighting pass
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+	glUseProgram(h_ShaderProgram_deferred);
+	glActiveTexture(GL_TEXTURE0 + N_TEXTURES_USED);
+	glBindTexture(GL_TEXTURE_2D, g_position);
+	glActiveTexture(GL_TEXTURE1 + N_TEXTURES_USED);
+	glBindTexture(GL_TEXTURE_2D, g_normal);
+	glActiveTexture(GL_TEXTURE2 + N_TEXTURES_USED);
+	glBindTexture(GL_TEXTURE_2D, g_albedo_spec);
+
+	draw_quad();
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glUseProgram(0);
