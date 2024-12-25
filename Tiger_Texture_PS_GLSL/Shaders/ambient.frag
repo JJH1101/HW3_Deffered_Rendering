@@ -22,5 +22,7 @@ void main() {
 	vec4 diffuse = vec4(texture(g_albedo_spec, tex_coords).rgb, 1.0f);
 	int mat_idx = int(texture(g_albedo_spec, tex_coords).a * 10 + 0.1f);
 
-	final_color = u_emissive_color[mat_idx] + u_global_ambient_color * diffuse;
+	if(mat_idx < 0 || mat_idx > 1) final_color = vec4(0, 0, 0, 1);
+	else
+		final_color = u_emissive_color[mat_idx] + u_global_ambient_color * diffuse;
 }

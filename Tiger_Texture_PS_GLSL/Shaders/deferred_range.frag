@@ -12,9 +12,6 @@ struct LIGHT {
 	vec4 position; // assume point or direction in EC in this example shader
 	vec4 ambient_color, diffuse_color, specular_color;
 	vec4 light_attenuation_factors; // compute this effect only if .w != 0.0f
-	vec3 spot_direction;
-	float spot_exponent;
-	float spot_cutoff_angle;
 	bool light_on;
 };
 
@@ -39,6 +36,9 @@ vec4 lighting_equation_textured(in vec3 P_EC, in vec3 N_EC, in vec4 base_color, 
 	vec4 color_sum;
 	float local_scale_factor, tmp_float; 
 	vec3 L_EC;
+
+	if(mat_idx > 1 || mat_idx < 0) return vec4(0, 0, 0, 1);
+
 	MATERIAL mat = u_material[mat_idx];
 
 	color_sum = mat.emissive_color + u_global_ambient_color * base_color;
@@ -60,19 +60,6 @@ vec4 lighting_equation_textured(in vec3 P_EC, in vec3 N_EC, in vec4 base_color, 
 			local_scale_factor = one_f/dot(tmp_vec4, u_light[i].light_attenuation_factors);
 
 			L_EC = normalize(L_EC);
-
-			if (u_light[i].spot_cutoff_angle < 180.0f) { // [0.0f, 90.0f] or 180.0f
-				float spot_cutoff_angle = clamp(u_light[i].spot_cutoff_angle, zero_f, 90.0f);
-				vec3 spot_dir = normalize(u_light[i].spot_direction);
-
-				tmp_float = dot(-L_EC, spot_dir);
-				if (tmp_float >= cos(radians(spot_cutoff_angle))) {
-					tmp_float = pow(tmp_float, u_light[i].spot_exponent);
-				}
-				else 
-					tmp_float = zero_f;
-				local_scale_factor *= tmp_float;
-			}
 		}
 		else {  // directional light source
 			L_EC = normalize(u_light[i].position.xyz);

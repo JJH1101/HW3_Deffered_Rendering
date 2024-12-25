@@ -848,7 +848,7 @@ void timer_scene(int value) {
 	timestamp_scene = (timestamp_scene + 1) % UINT_MAX;
 	cur_frame_tiger = timestamp_scene % N_TIGER_FRAMES;
 	rotation_angle_tiger = (timestamp_scene % 360)*TO_RADIAN;
-	glutPostRedisplay();
+	//glutPostRedisplay();
 	if (flag_tiger_animation)
 		glutTimerFunc(100, timer_scene, 0);
 }
@@ -1064,6 +1064,7 @@ void cleanup(void) {
 }
 
 void register_callbacks(void) {
+	glutIdleFunc(idle);
 	glutDisplayFunc(display);
 	glutKeyboardFunc(keyboard);
 	glutReshapeFunc(reshape);
@@ -1098,12 +1099,6 @@ void prepare_shader_program(void) {
 		loc_light[i].diffuse_color = glGetUniformLocation(h_ShaderProgram_TXPS, string);
 		sprintf(string, "u_light[%d].specular_color", i);
 		loc_light[i].specular_color = glGetUniformLocation(h_ShaderProgram_TXPS, string);
-		sprintf(string, "u_light[%d].spot_direction", i);
-		loc_light[i].spot_direction = glGetUniformLocation(h_ShaderProgram_TXPS, string);
-		sprintf(string, "u_light[%d].spot_exponent", i);
-		loc_light[i].spot_exponent = glGetUniformLocation(h_ShaderProgram_TXPS, string);
-		sprintf(string, "u_light[%d].spot_cutoff_angle", i);
-		loc_light[i].spot_cutoff_angle = glGetUniformLocation(h_ShaderProgram_TXPS, string);
 		sprintf(string, "u_light[%d].light_attenuation_factors", i);
 		loc_light[i].light_attenuation_factors = glGetUniformLocation(h_ShaderProgram_TXPS, string);
 	}
@@ -1126,27 +1121,21 @@ void initialize_lights_and_material(void) { // follow OpenGL conventions for ini
 #if MODE == FORWARD
 	glUseProgram(h_ShaderProgram_TXPS);
 	glUniform4fv(loc_global_ambient_color, 1, &global_ambient[0]);
-#else
+#elif MODE == DEFERRED_STENCIL
 	glUseProgram(h_ShaderProgram_ambient);
 	glUniform4fv(loc_global_ambient_color, 1, &global_ambient[0]);
 	glUseProgram(h_ShaderProgram_deferred);
+#else 
+	glUseProgram(h_ShaderProgram_deferred);
+	glUniform4fv(loc_global_ambient_color, 1, &global_ambient[0]);
 #endif
 
 	for (i = 0; i < NUMBER_OF_LIGHT_SUPPORTED; i++) {
 		glUniform1i(loc_light[i].light_on, 0); // turn off all lights initially
 		glUniform4f(loc_light[i].position, 0.0f, 0.0f, 1.0f, 0.0f);
 		glUniform4f(loc_light[i].ambient_color, 0.0f, 0.0f, 0.0f, 1.0f);
-		if (i == 0) {
-			glUniform4f(loc_light[i].diffuse_color, 1.0f, 1.0f, 1.0f, 1.0f);
-			glUniform4f(loc_light[i].specular_color, 1.0f, 1.0f, 1.0f, 1.0f);
-		}
-		else {
-			glUniform4f(loc_light[i].diffuse_color, 0.0f, 0.0f, 0.0f, 1.0f);
-			glUniform4f(loc_light[i].specular_color, 0.0f, 0.0f, 0.0f, 1.0f);
-		}
-		glUniform3f(loc_light[i].spot_direction, 0.0f, 0.0f, -1.0f);
-		glUniform1f(loc_light[i].spot_exponent, 0.0f); // [0.0, 128.0]
-		glUniform1f(loc_light[i].spot_cutoff_angle, 180.0f); // [0.0, 90.0] or 180.0 (180.0 for no spot light effect)
+		glUniform4f(loc_light[i].diffuse_color, 1.0f, 1.0f, 1.0f, 1.0f);
+		glUniform4f(loc_light[i].specular_color, 1.0f, 1.0f, 1.0f, 1.0f);
 		glUniform4f(loc_light[i].light_attenuation_factors, LIGHT_ATTENUATION_CONSTANT, LIGHT_ATTENUATION_LINEAR, LIGHT_ATTENUATION_QUADRATIC, 1.0f); // .w != 0.0f for no ligth attenuation
 	}
 
@@ -1190,6 +1179,7 @@ void initialize_OpenGL(void) {
 		glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 	initialize_lights_and_material();
 	initialize_flags();
+	setVSync(0);
 
 	glGenTextures(N_TEXTURES_USED, texture_names);
 }
@@ -1482,12 +1472,6 @@ void prepare_shader_deferred() {
 		loc_light[i].diffuse_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
 		sprintf(string, "u_light[%d].specular_color", i);
 		loc_light[i].specular_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
-		sprintf(string, "u_light[%d].spot_direction", i);
-		loc_light[i].spot_direction = glGetUniformLocation(h_ShaderProgram_deferred, string);
-		sprintf(string, "u_light[%d].spot_exponent", i);
-		loc_light[i].spot_exponent = glGetUniformLocation(h_ShaderProgram_deferred, string);
-		sprintf(string, "u_light[%d].spot_cutoff_angle", i);
-		loc_light[i].spot_cutoff_angle = glGetUniformLocation(h_ShaderProgram_deferred, string);
 		sprintf(string, "u_light[%d].light_attenuation_factors", i);
 		loc_light[i].light_attenuation_factors = glGetUniformLocation(h_ShaderProgram_deferred, string);
 	}
@@ -1563,12 +1547,6 @@ void prepare_shader_deferred() {
 		loc_light[i].diffuse_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
 		sprintf(string, "u_light[%d].specular_color", i);
 		loc_light[i].specular_color = glGetUniformLocation(h_ShaderProgram_deferred, string);
-		sprintf(string, "u_light[%d].spot_direction", i);
-		loc_light[i].spot_direction = glGetUniformLocation(h_ShaderProgram_deferred, string);
-		sprintf(string, "u_light[%d].spot_exponent", i);
-		loc_light[i].spot_exponent = glGetUniformLocation(h_ShaderProgram_deferred, string);
-		sprintf(string, "u_light[%d].spot_cutoff_angle", i);
-		loc_light[i].spot_cutoff_angle = glGetUniformLocation(h_ShaderProgram_deferred, string);
 		sprintf(string, "u_light[%d].light_attenuation_factors", i);
 		loc_light[i].light_attenuation_factors = glGetUniformLocation(h_ShaderProgram_deferred, string);
 	}
@@ -1703,6 +1681,8 @@ void lighting_pass(unsigned int light_idx) {
 	glBindTexture(GL_TEXTURE_2D, g_normal);
 	glActiveTexture(GL_TEXTURE2 + N_TEXTURES_USED);
 	glBindTexture(GL_TEXTURE_2D, g_albedo_spec);
+	glActiveTexture(GL_TEXTURE0 + TEXTURE_ID_APPLES);
+	glBindTexture(GL_TEXTURE_2D, texture_names[TEXTURE_ID_APPLES]);
 
 	glUseProgram(h_ShaderProgram_deferred);
 
@@ -1772,7 +1752,6 @@ void display() {
 	// geometry pass
 	glBindFramebuffer(GL_FRAMEBUFFER, g_buffer);
 	draw_scene();
-	//draw_spheres();
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 	// lighting pass
@@ -1784,7 +1763,8 @@ void display() {
 	glBindTexture(GL_TEXTURE_2D, g_normal);
 	glActiveTexture(GL_TEXTURE2 + N_TEXTURES_USED);
 	glBindTexture(GL_TEXTURE_2D, g_albedo_spec);
-
+	glActiveTexture(GL_TEXTURE0 + TEXTURE_ID_APPLES);
+	glBindTexture(GL_TEXTURE_2D, texture_names[TEXTURE_ID_APPLES]);
 	draw_quad();
 
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -1814,7 +1794,33 @@ void display() {
 
 #endif
 
+	frameCount++;
 	glutSwapBuffers();
+}
+
+void idle() {
+	int currentTime = glutGet(GLUT_ELAPSED_TIME);
+	int timeInterval = currentTime - previousTime;
+
+	if (timeInterval > 1000) {
+		fps = frameCount * 1000.0f / timeInterval;
+		previousTime = currentTime;
+		frameCount = 0;
+
+		printf("FPS: %.2f\n", fps);
+	}
+
+	glutPostRedisplay();
+}
+
+void setVSync(int interval) {
+	typedef BOOL(WINAPI* PFNWGLSWAPINTERVALEXTPROC)(int interval);
+	PFNWGLSWAPINTERVALEXTPROC wglSwapIntervalEXT = NULL;
+	wglSwapIntervalEXT = (PFNWGLSWAPINTERVALEXTPROC)wglGetProcAddress("wglSwapIntervalEXT");
+
+	if (wglSwapIntervalEXT) {
+		wglSwapIntervalEXT(interval); // interval °ª: 0 (VSync ²û), 1 (ÄÔ)
+	}
 }
 
 #define N_MESSAGE_LINES 1

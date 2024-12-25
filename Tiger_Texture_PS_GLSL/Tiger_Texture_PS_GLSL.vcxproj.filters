@@ -32,6 +32,9 @@
     <ClInclude Include="Define.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="wglext.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="Shaders\Phong_Tx.frag">

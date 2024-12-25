@@ -5,7 +5,7 @@
 #define DEFERRED_RANGE 2
 #define DEFERRED_STENCIL 3
 
-#define MODE DEFERRED_STENCIL
+#define MODE DEFERRED
 
 #define NUMBER_OF_LIGHT_SUPPORTED 100
 #define NUMBER_OF_MATERIAL_SUPPORTED 2
@@ -16,6 +16,8 @@
 
 #include <GL/glew.h>
 #include "My_Shading.h"
+#include "wglext.h"
+
 int window_width = 800, window_height = 800;
 float global_ambient[] = {0.115f, 0.115f, 0.115f, 1.0f};
 
@@ -29,6 +31,12 @@ int n_triangles_sphere;
 void prepare_sphere();
 void draw_sphere();
 void draw_spheres();
+
+int previousTime = 0, frameCount = 0;
+double fps = 0.0;
+
+void idle();
+void setVSync(int interval);
 
 #if MODE != FORWARD
 unsigned int g_buffer, g_position, g_normal, g_albedo_spec, g_rbo_depth;
